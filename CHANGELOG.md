@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Accept OpenSSH equals separators, single quotes and case variants in the supported subset.
+- Do not classify later declarations as global after a syntax error makes scope uncertain.
+
 ## 0.1.0
 
 - Offline static-global and captured effective-output modes.
