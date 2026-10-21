@@ -59,9 +59,10 @@ class AnalyzerTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertGreater(analyze(text)["summary"].get("UNKNOWN", 0), 0)
 
-    def test_case_sensitive_values_and_unassessed_directives(self):
+    def test_case_normalization_and_unassessed_directives(self):
         result = analyze("PermitRootLogin YES\nAllowUsers alice bob")
         self.assertIn("allowusers", result["unassessed_directives"])
+        self.assertEqual(finding(result, "permitrootlogin")["value"], "yes")
         self.assertGreater(result["summary"]["UNKNOWN"], 0)
 
     def test_root_restriction_variants(self):
@@ -69,12 +70,29 @@ class AnalyzerTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(finding(analyze("PermitRootLogin " + value), "permitrootlogin")["status"], "INFO")
 
-    def test_shell_quoting_and_control_line_breaks_are_not_normalized(self):
-        for text in ("PermitRootLogin 'no'", "PermitRootLogin n\\o", "PermitRootLogin no\vPasswordAuthentication no"):
+    def test_backslashes_and_control_line_breaks_are_not_normalized(self):
+        for text in ("PermitRootLogin n\\o", "PermitRootLogin no\vPasswordAuthentication no"):
             with self.subTest(text=text):
                 result = analyze(text)
                 self.assertFalse(any(x["check"] == "permitrootlogin" and x["status"] == "INFO" for x in result["findings"]))
         self.assertEqual(finding(analyze('PermitRootLogin "no"\r\n'), "permitrootlogin")["value"], "no")
+
+    def test_openssh_equals_quotes_and_case_variants(self):
+        for text in ("PermitRootLogin=no", "PermitRootLogin= no", "PermitRootLogin = no", "PermitRootLogin 'NO'"):
+            with self.subTest(text=text):
+                self.assertEqual(finding(analyze(text), "permitrootlogin")["value"], "no")
+        self.assertEqual(finding(analyze("LogLevel=verbose"), "loglevel")["value"], "VERBOSE")
+
+    def test_equals_match_never_leaks_into_globals(self):
+        result = analyze("PermitRootLogin no\nMatch=User demo\nPasswordAuthentication yes")
+        self.assertFalse(any(x["check"] == "passwordauthentication" and x["value"] for x in result["findings"]))
+
+    def test_parse_errors_do_not_promote_later_options_to_global(self):
+        for broken in ('Match User "broken', 'PermitRootLogin "broken', 'Match User demo\x00', '=unsupported'):
+            with self.subTest(broken=broken):
+                result = analyze("PermitRootLogin no\n" + broken + "\nPasswordAuthentication yes")
+                self.assertFalse(any(x["check"] == "passwordauthentication" and x["value"] for x in result["findings"]))
+                self.assertEqual(finding(result, "permitrootlogin")["value"], "no")
 
     def test_all_review_rules(self):
         for directive, value in (("PermitEmptyPasswords", "yes"), ("PubkeyAuthentication", "no"), ("StrictModes", "no"), ("LogLevel", "QUIET"), ("LogLevel", "DEBUG3")):
