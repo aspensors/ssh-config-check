@@ -1,6 +1,7 @@
 """A deliberately limited parser, not an implementation of sshd_config(5)."""
 from collections import Counter
 from dataclasses import asdict, dataclass
+import re
 import shlex
 
 MAX_BYTES = 1024 * 1024
@@ -40,38 +41,50 @@ def analyze(text, *, effective=False, source="provided text"):
     if len(text.encode("utf-8")) > MAX_BYTES:
         raise ValueError("Input exceeds the 1 MiB limit")
     findings, options, skipped = [], {}, set()
-    in_match = False
+    global_scope_known = True
     for number, raw in enumerate(text.split("\n"), 1):
         raw = raw.removesuffix("\r")
         if any(ord(c) < 32 and c != "\t" or ord(c) == 127 for c in raw):
             findings.append(Finding("syntax", "UNKNOWN", None, number, "Control characters in input.", "Use an unmodified UTF-8 text configuration."))
+            global_scope_known = False
+            continue
+        stripped = raw.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        directive = re.fullmatch(r"([A-Za-z][A-Za-z0-9]*)(?:[ \t]*=[ \t]*|[ \t]+)(.*)", stripped)
+        if directive:
+            key, arguments = directive.group(1).lower(), directive.group(2)
+        elif re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", stripped):
+            key, arguments = stripped.lower(), ""
+        else:
+            findings.append(Finding("syntax", "UNKNOWN", None, number, "Unsupported directive syntax; remaining global scope is uncertain.", "Validate the original file with sshd -t."))
+            global_scope_known = False
             continue
         # shlex supplies quoted-value handling for our supported subset only.
         try:
-            lexer = shlex.shlex(raw, posix=True)
+            lexer = shlex.shlex(arguments, posix=True)
             lexer.whitespace_split = True
             lexer.commenters = "#"
-            lexer.quotes = '"'
+            lexer.quotes = "\"'"
             lexer.escape = ""
-            tokens = list(lexer)
+            args = list(lexer)
         except ValueError:
             findings.append(Finding("syntax", "UNKNOWN", None, number, "Unclosed quote or unsupported escaping.", "Validate the original file with sshd -t."))
+            global_scope_known = False
             continue
-        if not tokens:
-            continue
-        key, args = tokens[0].lower(), tokens[1:]
         if key in {"include", "match"}:
             findings.append(Finding(key, "UNKNOWN", " ".join(args), number,
                 "Include files and Match contexts are not evaluated by this offline parser.",
                 "Capture sshd -T -f FILE -C user=USER,host=HOST,addr=IP for each relevant connection context."))
             if key == "match":
-                in_match = True
+                global_scope_known = False
             continue
-        if in_match:
+        if not global_scope_known:
             continue
         if key not in VALUES:
             skipped.add(key)
             continue
+        args = [value.upper() if key == "loglevel" else value.lower() for value in args]
         if len(args) != 1 or args[0] not in VALUES[key]:
             findings.append(Finding(key, "UNKNOWN", " ".join(args), number, "Unsupported value or syntax.", "Validate with your installed OpenSSH version using sshd -t."))
             # Never use a later declaration to mask an invalid first value.
