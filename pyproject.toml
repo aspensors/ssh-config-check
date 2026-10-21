@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssh-config-check"
+version = "0.1.0"
+description = "Offline, explained observations about OpenSSH server configuration"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+keywords = ["openssh", "security", "configuration", "cli"]
+
+[project.scripts]
+ssh-config-check = "ssh_config_check.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ssh_config_check*"]
