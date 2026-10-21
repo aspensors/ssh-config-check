@@ -48,9 +48,9 @@ WARN means review the observation in your environment. Password authentication c
 
 Seven scalar settings: PermitRootLogin, PasswordAuthentication, PermitEmptyPasswords, PubkeyAuthentication, StrictModes, KbdInteractiveAuthentication and LogLevel.
 
-Other directives are listed as unassessed. Missing values are UNKNOWN: defaults vary by version and are not assumed. Supported values are checked exactly; keywords are case-insensitive. A repeated static scalar retains its first value and gets an INFO note; duplicates in effective output produce UNKNOWN. Invalid input never becomes a PASS.
+Other global directives are listed as unassessed. Missing values are UNKNOWN: defaults vary by version and are not assumed. Keywords and supported enum/boolean values are normalized as accepted by OpenSSH (LogLevel is displayed uppercase). A repeated static scalar retains its first value and gets an INFO note; duplicates in effective output produce UNKNOWN. Invalid input never becomes a PASS.
 
-The static parser supports whitespace-separated directives, double-quoted values and comments in this subset. It does not reproduce the whole OpenSSH grammar. Include is not followed. All lines after the first Match (including Match all) are outside global analysis. Each Include/Match creates an UNKNOWN observation. A file without these directives is still only partially assessed.
+The static parser supports whitespace or equals separators, single/double-quoted values and comments in this subset. Backslash escaping is not implemented. It does not reproduce the whole OpenSSH grammar. Include is not followed. All lines after the first Match (including Match all) are outside global analysis. After a tokenization error, unsupported directive syntax or control characters, later declarations are not assumed to be global. Each Include/Match creates an UNKNOWN observation. A file without these directives is still only partially assessed.
 
 ## Let OpenSSH resolve Include and Match
 
